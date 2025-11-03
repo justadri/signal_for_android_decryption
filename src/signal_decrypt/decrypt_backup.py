@@ -36,7 +36,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.modes import CTR
 
-from Backups_pb2 import BackupFrame, SqlStatement  # type: ignore
+from .Backups_pb2 import BackupFrame, SqlStatement
 
 
 DefaultBackend = default_backend()
