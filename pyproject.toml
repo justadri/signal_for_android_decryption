@@ -1,6 +1,6 @@
 [project]
 name = "signal-decrypt"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python package version of mossblaser/signal_for_android_decryption"
 readme = "README.md"
 requires-python = ">=3.10"
