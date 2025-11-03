@@ -220,7 +220,7 @@ def decrypt_backup(
     extract_database: bool = True,
     extract_attachments: bool = True,
     extract_preferences: bool = True,
-) -> Iterator[tuple[None | Path, None | Path, None | Path]]:
+) -> Iterator[dict[str, Path | None]]:
     """
     Decrypt a Signal Android backup file into the specified directory.
 
@@ -356,7 +356,7 @@ def decrypt_backup(
             )
 
         # Yield to allow for e.g. printing progress information.
-        yield (None, None, None)
+        yield {}
 
     if extract_database and db_connection:
         db_connection.commit()
@@ -368,7 +368,11 @@ def decrypt_backup(
         with key_value_filename.open("w") as kvf:
             json.dump(key_values, kvf)
 
-    return database_filename, preferences_filename, attachments_directory
+    return {
+        "database_file_path": database_filename,
+        "preferences_file_path": preferences_filename,
+        "attachments_directory_path": attachments_directory,
+    }
 
 
 def decrypt(
@@ -378,15 +382,34 @@ def decrypt(
     extract_database: bool,
     extract_attachments: bool,
     extract_preferences: bool,
-) -> tuple[None | Path, None | Path, None | Path]:
-    """Main command-line interface."""
+) -> dict[str, Path | None]:
+    """
+    Displays a progress bar while calling the main decryption logic.
+
+    Args:
+        backup_file (Path): Path to the backup file
+        passphrase (str): Encryption passphtase for the backup file
+        output_directory (Path): Directory to write the decrypted files to
+        extract_database (bool): Whether to extract the database or not
+        extract_attachments (bool): Whether to extract the attachments or not
+        extract_preferences (bool): Whether to extract the preferences or not
+
+    Raises:
+        RuntimeError: If the passphrase is incorrect or the backup is corrupted
+
+    Returns:
+        dict[str, Path|None]: A dictionary containing the paths to the decrypted files, with the keys:
+            - database_file_path: Path to the decrypted database file
+            - preferences_file_path: Path to the decrypted preferences file
+            - attachments_directory_path: Path to the directory containing the decrypted attachments
+    """
     # Get backup filesize (for progress indication purposes)
     file = backup_file.open(mode="rb")
     file.seek(0, 2)
     backup_file_size = file.tell()
     file.seek(0)
 
-    result: tuple[None | Path, None | Path, None | Path] = (None, None, None)
+    result: dict[str, Path | None] = {}
     with tqdm(total=backup_file_size, unit="B", unit_scale=True) as pbar:
         pbar.set_description("Decrypting...")
         try:
