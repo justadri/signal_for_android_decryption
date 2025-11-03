@@ -410,7 +410,7 @@ def decrypt(
     file.seek(0)
 
     result: dict[str, Path | None] = {}
-    with tqdm(total=backup_file_size, unit="B", unit_scale=True) as pbar:
+    with tqdm(total=backup_file_size, unit="b", unit_scale=True) as pbar:
         pbar.set_description("Decrypting...")
         try:
             for result in decrypt_backup(
