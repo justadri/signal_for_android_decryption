@@ -220,7 +220,7 @@ def decrypt_backup(
     extract_database: bool = True,
     extract_attachments: bool = True,
     extract_preferences: bool = True,
-) -> Iterator[None]:
+) -> Iterator[tuple[None | Path, None | Path, None | Path]]:
     """
     Decrypt a Signal Android backup file into the specified directory.
 
@@ -244,7 +244,7 @@ def decrypt_backup(
     # Create output directories
     if not output_directory.is_dir():
         output_directory.mkdir(parents=True)
-    
+
     if extract_attachments:
         for directory in [
             attachments_directory,
@@ -356,7 +356,7 @@ def decrypt_backup(
             )
 
         # Yield to allow for e.g. printing progress information.
-        yield
+        yield (None, None, None)
 
     if extract_database and db_connection:
         db_connection.commit()
@@ -367,7 +367,7 @@ def decrypt_backup(
 
         with key_value_filename.open("w") as kvf:
             json.dump(key_values, kvf)
-            
+
     return database_filename, preferences_filename, attachments_directory
 
 
@@ -378,7 +378,7 @@ def decrypt(
     extract_database: bool,
     extract_attachments: bool,
     extract_preferences: bool,
-) -> None:
+) -> tuple[None | Path, None | Path, None | Path]:
     """Main command-line interface."""
     # Get backup filesize (for progress indication purposes)
     file = backup_file.open(mode="rb")
@@ -386,13 +386,22 @@ def decrypt(
     backup_file_size = file.tell()
     file.seek(0)
 
-    last_perc = ""
+    result: tuple[None | Path, None | Path, None | Path] = (None, None, None)
     with tqdm(total=backup_file_size, unit="B", unit_scale=True) as pbar:
         pbar.set_description("Decrypting...")
         try:
-            for _ in decrypt_backup(
-                file, passphrase, output_directory, extract_database, extract_attachments, extract_preferences
+            for result in decrypt_backup(
+                file,
+                passphrase,
+                output_directory,
+                extract_database,
+                extract_attachments,
+                extract_preferences,
             ):
                 pbar.update(file.tell())
         except MACMismatchError:
             raise RuntimeError("Error: Incorrect passphrase or corrupted backup (Bad MAC)\n")
+        finally:
+            file.close()
+
+    return result

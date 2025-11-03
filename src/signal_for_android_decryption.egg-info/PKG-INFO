@@ -2,7 +2,7 @@ Metadata-Version: 2.4
 Name: signal-for-android-decryption
 Version: 0.1.0
 Summary: Python package version of mossblaser/signal_for_android_decryption
-Requires-Python: >=3.12
+Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 License-File: LICENSE
 Requires-Dist: cryptography>=46.0.3
