@@ -1,5 +1,5 @@
 [project]
-name = "signal-for-android-decryption"
+name = "signal-decrypt"
 version = "0.1.0"
 description = "Python package version of mossblaser/signal_for_android_decryption"
 readme = "README.md"

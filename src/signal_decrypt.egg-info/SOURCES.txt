@@ -1,0 +1,13 @@
+LICENSE
+README.md
+pyproject.toml
+src/signal_decrypt/Backups_pb2.py
+src/signal_decrypt/__init__.py
+src/signal_decrypt/cli.py
+src/signal_decrypt/decrypt_backup.py
+src/signal_decrypt.egg-info/PKG-INFO
+src/signal_decrypt.egg-info/SOURCES.txt
+src/signal_decrypt.egg-info/dependency_links.txt
+src/signal_decrypt.egg-info/entry_points.txt
+src/signal_decrypt.egg-info/requires.txt
+src/signal_decrypt.egg-info/top_level.txt
