@@ -1,0 +1,2 @@
+[console_scripts]
+signal_decrypt = signal_decrypt.cli:main

@@ -1,0 +1,18 @@
+[project]
+name = "signal-for-android-decryption"
+version = "0.1.0"
+description = "Python package version of mossblaser/signal_for_android_decryption"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=46.0.3",
+    "protobuf>=6.33.0",
+    "tqdm>=4.67.1",
+]
+
+[build-system]
+requires = ["setuptools>=45.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+signal_decrypt = "signal_decrypt.cli:main"

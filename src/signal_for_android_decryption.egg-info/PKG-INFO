@@ -1,3 +1,15 @@
+Metadata-Version: 2.4
+Name: signal-for-android-decryption
+Version: 0.1.0
+Summary: Python package version of mossblaser/signal_for_android_decryption
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: cryptography>=46.0.3
+Requires-Dist: protobuf>=6.33.0
+Requires-Dist: tqdm>=4.67.1
+Dynamic: license-file
+
 ### The following is the readme from [mossblaser/signal_for_android_decryption](https://github.com/mossblaser/signal_for_android_decryption):
 
 Signal for Android backup decryption tool

@@ -6,7 +6,7 @@ Usage::
     $ python decrypt_backup.py backup_filenme [output_directory] [-p PASSPHRASE]
 """
 
-from typing import NamedTuple, BinaryIO, Iterator, Union, Dict, cast
+from typing import NamedTuple, BinaryIO, Iterator, Union, Dict, cast, Any
 
 import sys
 
@@ -16,7 +16,7 @@ import sqlite3
 
 import json
 
-import getpass
+from tqdm import tqdm
 
 from pathlib import Path
 
@@ -217,6 +217,9 @@ def decrypt_backup(
     backup_file: BinaryIO,
     passphrase: str,
     output_directory: Path,
+    extract_database: bool = True,
+    extract_attachments: bool = True,
+    extract_preferences: bool = True,
 ) -> Iterator[None]:
     """
     Decrypt a Signal Android backup file into the specified directory.
@@ -239,26 +242,34 @@ def decrypt_backup(
     avatars_directory = output_directory / "avatars"
 
     # Create output directories
-    for directory in [
-        output_directory,
-        attachments_directory,
-        stickers_directory,
-        avatars_directory,
-    ]:
-        if not directory.is_dir():
-            directory.mkdir(parents=True)
+    if not output_directory.is_dir():
+        output_directory.mkdir(parents=True)
+    
+    if extract_attachments:
+        for directory in [
+            attachments_directory,
+            stickers_directory,
+            avatars_directory,
+        ]:
+            if not directory.is_dir():
+                directory.mkdir(parents=True)
 
     # Create empty DB
-    if database_filename.is_file():
-        database_filename.unlink()
-    db_connection = sqlite3.connect(database_filename)
-    db_cursor = db_connection.cursor()
+    db_connection = None
+    db_cursor = None
+    if extract_database:
+        if database_filename.is_file():
+            database_filename.unlink()
+        db_connection = sqlite3.connect(database_filename)
+        db_cursor = db_connection.cursor()
 
     # Preferences stored as a dictionary {<file>: {<key>: {<type>: <value>, ...}, ...}, ...}
-    preferences: Dict[str, Dict[str, Dict[str, Any]]] = {}
-    
-    # Key-Value pairs stored as a dictionary {<key>: {<type>: <value>, ...}, ...}
-    key_values: Dict[str, Dict[str, Any]] = {}
+    preferences = {}
+    key_values = {}
+    if extract_preferences:
+        preferences: Dict[str, Dict[str, Dict[str, Any]]] = {}    
+        # Key-Value pairs stored as a dictionary {<key>: {<type>: <value>, ...}, ...}
+        key_values: Dict[str, Dict[str, Any]] = {}
 
     # Work out basic cryptographic parameters
     initialisation_vector, salt, header_version = read_backup_header(backup_file)
@@ -273,11 +284,11 @@ def decrypt_backup(
 
         if backup_frame.HasField("end"):
             break
-        elif backup_frame.HasField("version"):
+        elif backup_frame.HasField("version") and extract_database and db_cursor:
             db_cursor.execute(
                 f"PRAGMA user_version = {backup_frame.version.version:d}",
             )
-        elif backup_frame.HasField("statement"):
+        elif backup_frame.HasField("statement") and extract_database and db_cursor:
             statement = backup_frame.statement
             # Skip SQLite internal tables and full text search index tables
             assert isinstance(statement.statement, str)
@@ -290,7 +301,7 @@ def decrypt_backup(
                     statement.statement,
                     tuple(map(parameter_to_native_type, statement.parameters)),
                 )
-        elif backup_frame.HasField("preference"):
+        elif backup_frame.HasField("preference") and extract_preferences:
             preference = backup_frame.preference
             value_dict = preferences.setdefault(preference.file, {})[
                 preference.key
@@ -301,7 +312,7 @@ def decrypt_backup(
                 value_dict["booleanValue"] = preference.booleanValue
             if preference.HasField("isStringSetValue") and preference.isStringSetValue:
                 value_dict["stringSetValue"] = list(preference.stringSetValue)
-        elif backup_frame.HasField("keyValue"):
+        elif backup_frame.HasField("keyValue") and extract_preferences:
             key_value = backup_frame.keyValue
             value_dict = key_values[key_value.key] = {}
             for field in [
@@ -315,7 +326,7 @@ def decrypt_backup(
                     value_dict[field] = getattr(key_value, field)
             if key_value.HasField("blobValue"):
                 value_dict["blobValueBase64"] = b64encode(key_value.blobValue).decode("ascii")
-        else:
+        elif extract_attachments:
             if backup_frame.HasField("attachment"):
                 filename = (
                     attachments_directory
@@ -347,77 +358,41 @@ def decrypt_backup(
         # Yield to allow for e.g. printing progress information.
         yield
 
-    db_connection.commit()
+    if extract_database and db_connection:
+        db_connection.commit()
 
-    with preferences_filename.open("w") as pf:
-        json.dump(preferences, pf)
+    if extract_preferences:
+        with preferences_filename.open("w") as pf:
+            json.dump(preferences, pf)
 
-    with key_value_filename.open("w") as kvf:
-        json.dump(key_values, kvf)
+        with key_value_filename.open("w") as kvf:
+            json.dump(key_values, kvf)
+            
+    return database_filename, preferences_filename, attachments_directory
 
 
-def main() -> None:
+def decrypt(
+    backup_file: Path,
+    passphrase: str,
+    output_directory: Path,
+    extract_database: bool,
+    extract_attachments: bool,
+    extract_preferences: bool,
+) -> None:
     """Main command-line interface."""
-    parser = ArgumentParser(
-        description="""
-            Decrypt a Signal for Android backup file into its constituent
-            SQLite database and associated files (e.g. attachments, stickers
-            and avatars).
-        """
-    )
-    parser.add_argument(
-        "backup_file",
-        type=FileType("rb"),
-        help="The Signal for Android backup file.",
-    )
-    parser.add_argument(
-        "output_directory",
-        type=Path,
-        nargs="?",
-        default=Path("./out"),
-        help="""
-            The output directory into which the decrypted data will be written.
-            Defaults to %(default)s.  This directory will be created if it does
-            not exist. Existing files may be silently overwritten. Within this
-            directory the following will be created. A `database.sqlite`
-            containing the Signal app's SQLite database. A `preferences.json`
-            file containing certain preference data held by Signal. A trio of
-            directories `attachments`, `avatars` and `stickers` which contain
-            binary blobs extracted from the backup. These files are named
-            according to database IDs in the SQLite database.
-        """,
-    )
-    parser.add_argument(
-        "--passphrase",
-        "-p",
-        help="""
-            The backup file passphrase. If this argument is not provided, the
-            passphrase will be requested interactively.
-        """,
-    )
-    args = parser.parse_args()
-
-    if args.passphrase is None:
-        args.passphrase = getpass.getpass("Backup passphrase: ")
-
     # Get backup filesize (for progress indication purposes)
-    args.backup_file.seek(0, 2)
-    backup_file_size = args.backup_file.tell()
-    args.backup_file.seek(0)
+    file = backup_file.open(mode="rb")
+    file.seek(0, 2)
+    backup_file_size = file.tell()
+    file.seek(0)
 
     last_perc = ""
-    try:
-        for _ in decrypt_backup(
-            args.backup_file, args.passphrase, args.output_directory
-        ):
-            perc = f"{args.backup_file.tell() * 100 / backup_file_size:0.1f}%"
-            if perc != last_perc:
-                sys.stderr.write(perc + "\n")
-                last_perc = perc
-    except MACMismatchError:
-        sys.stderr.write("Error: Incorrect passphrase or corrupted backup (Bad MAC)\n")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+    with tqdm(total=backup_file_size, unit="B", unit_scale=True) as pbar:
+        pbar.set_description("Decrypting...")
+        try:
+            for _ in decrypt_backup(
+                file, passphrase, output_directory, extract_database, extract_attachments, extract_preferences
+            ):
+                pbar.update(file.tell())
+        except MACMismatchError:
+            raise RuntimeError("Error: Incorrect passphrase or corrupted backup (Bad MAC)\n")
