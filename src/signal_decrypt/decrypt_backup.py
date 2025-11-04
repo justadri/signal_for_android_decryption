@@ -8,8 +8,6 @@ Usage::
 
 from typing import NamedTuple, BinaryIO, Iterator, Union, Dict, cast, Any
 
-import sys
-
 import struct
 
 import sqlite3
@@ -22,7 +20,7 @@ from pathlib import Path
 
 from base64 import b64encode
 
-from argparse import ArgumentParser, FileType
+import logging
 
 from cryptography.hazmat.backends import default_backend
 
@@ -36,7 +34,10 @@ from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.modes import CTR
 
-from .Backups_pb2 import BackupFrame, SqlStatement
+from .Backups_pb2 import (
+    BackupFrame,  # pyright: ignore[reportAttributeAccessIssue]
+    SqlStatement,  # pyright: ignore[reportAttributeAccessIssue]
+)
 
 
 DefaultBackend = default_backend()
@@ -276,6 +277,7 @@ def decrypt_backup(
     cipher_key, hmac_key = derive_keys(passphrase, salt)
 
     # Begin decryption, one frame at a time
+    frames = 0
     while True:
         backup_frame = decrypt_frame(
             backup_file, hmac_key, cipher_key, initialisation_vector, header_version
@@ -356,7 +358,10 @@ def decrypt_backup(
             )
 
         # Yield to allow for e.g. printing progress information.
-        yield {}
+        frames += 1
+        if frames % 1000 == 0:
+            yield {}
+            frames = 0
 
     if extract_database and db_connection:
         db_connection.commit()
@@ -404,13 +409,11 @@ def decrypt(
             - attachments_directory_path: Path to the directory containing the decrypted attachments
     """
     # Get backup filesize (for progress indication purposes)
+    backup_file_size = backup_file.stat().st_size
     file = backup_file.open(mode="rb")
-    file.seek(0, 2)
-    backup_file_size = file.tell()
-    file.seek(0)
 
     result: dict[str, Path | None] = {}
-    with tqdm(total=backup_file_size, unit="b", unit_scale=True) as pbar:
+    with tqdm(total=backup_file_size, unit="B", unit_scale=True) as pbar:
         pbar.set_description("Decrypting...")
         try:
             for result in decrypt_backup(
